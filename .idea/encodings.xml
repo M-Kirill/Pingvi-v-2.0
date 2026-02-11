@@ -1,6 +1,19 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="Encoding">
+    <file url="file://$PROJECT_DIR$/backend/bot.py" charset="windows-1251" />
+    <file url="file://$PROJECT_DIR$/frontend/app/_layout.tsx" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/frontend/app/create_task.tsx" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/frontend/app/create_task_for_child.tsx" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/frontend/app/login.tsx" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/frontend/app/login_for_child.tsx" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/frontend/app/parent_profile.tsx" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/frontend/app/tasks.tsx" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/frontend/app/tasks_for_child.tsx" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/frontend/app/telegram_welcome.tsx" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/frontend/app/welcome_screen.tsx" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/frontend/components/task_item/task-item.tsx" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/frontend/components/task_item/types.ts" charset="UTF-8" />
     <file url="PROJECT" charset="windows-1251" />
   </component>
 </project>

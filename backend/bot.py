@@ -7,13 +7,17 @@ import os
 from datetime import datetime
 
 TOKEN = "8435081779:AAEd-5lTccA2DtsCQQmXZRSZDNDm3l48Has"
-API_URL = "http://localhost:8000"
+# ВАЖНО: используем localhost для бота, который запущен на том же компьютере
+API_URL = "http://127.0.0.1:8081"  # ИЗМЕНЕНО: localhost -> 127.0.0.1
 
 bot = telebot.TeleBot(TOKEN)
 
 def register_user(telegram_id: int, first_name: str):
     """Регистрация пользователя через API"""
     try:
+        print(f"📤 Отправка запроса на {API_URL}/api/users/register")
+        print(f"📦 Данные: telegram_id={telegram_id}, first_name={first_name}")
+        
         response = requests.post(
             f"{API_URL}/api/users/register",
             json={
@@ -22,6 +26,9 @@ def register_user(telegram_id: int, first_name: str):
             },
             timeout=10
         )
+        
+        print(f"📥 Статус ответа: {response.status_code}")
+        print(f"📥 Тело ответа: {response.text}")
         
         if response.status_code == 200:
             data = response.json()
@@ -32,23 +39,38 @@ def register_user(telegram_id: int, first_name: str):
                     "password": data.get("password"),
                     "message": data.get("message")
                 }
-        return {"success": False, "message": "Ошибка регистрации"}
+            else:
+                print(f"❌ Ошибка в ответе: {data}")
+                return {"success": False, "message": data.get("message", "Ошибка регистрации")}
+        else:
+            print(f"❌ HTTP ошибка: {response.status_code}")
+            return {"success": False, "message": f"Ошибка сервера: {response.status_code}"}
+            
+    except requests.exceptions.ConnectionError:
+        print(f"❌ Ошибка подключения: сервер недоступен по адресу {API_URL}")
+        print(f"   Проверьте, запущен ли бэкенд на порту 8081")
+        return {"success": False, "message": "Сервер недоступен. Запустите бэкенд."}
     except Exception as e:
-        print(f"Ошибка регистрации: {e}")
-        return {"success": False, "message": "Сервер недоступен"}
+        print(f"❌ Ошибка регистрации: {e}")
+        return {"success": False, "message": f"Ошибка: {str(e)}"}
 
 def get_user_data(telegram_id: int):
     """Получение данных пользователя"""
     try:
+        print(f"📤 Получение данных пользователя {telegram_id}")
+        
         response = requests.get(
             f"{API_URL}/api/telegram/user-data/{telegram_id}",
             timeout=10
         )
         
+        print(f"📥 Статус ответа: {response.status_code}")
+        
         if response.status_code == 200:
             return response.json()
-        return {"success": False, "message": "Ошибка получения данных"}
-    except:
+        return {"success": False, "message": f"Ошибка получения данных: {response.status_code}"}
+    except Exception as e:
+        print(f"❌ Ошибка получения данных: {e}")
         return {"success": False, "message": "Сервер недоступен"}
 
 def get_child_data(telegram_id: int):
@@ -61,28 +83,21 @@ def get_child_data(telegram_id: int):
         
         if response.status_code == 200:
             return response.json()
-        return {"success": False, "message": "Ошибка получения данных"}
-    except:
-        return {"success": False, "message": "Сервер недоступен"}
-
-def create_child_account(telegram_id: int, child_name: str, age: int = None):
-    """Создание аккаунта ребенка"""
-    try:
-        # Получаем токен родителя (упрощенно - в реальном приложении нужна аутентификация)
-        # Для демо просто вызываем API
-        pass  # Реализация через API будет в callback
+        return {"success": False, "message": f"Ошибка получения данных: {response.status_code}"}
     except Exception as e:
-        print(f"Ошибка создания ребенка: {e}")
-        return None
+        print(f"❌ Ошибка получения данных детей: {e}")
+        return {"success": False, "message": "Сервер недоступен"}
 
 @bot.message_handler(commands=['start', 'login'])
 def handle_start(message):
     user = message.from_user
     
+    print(f"🆕 Новый пользователь: {user.id} - {user.first_name}")
+    
     # Проверяем, зарегистрирован ли пользователь
     user_data = get_user_data(user.id)
     
-    if user_data.get("success"):
+    if user_data.get("success") and user_data.get("user"):
         # Пользователь уже зарегистрирован
         user_info = user_data.get("user", {})
         children_count = user_data.get("children_count", 0)
@@ -118,7 +133,7 @@ def handle_start(message):
         """
         
         markup = types.InlineKeyboardMarkup()
-        btn_register = types.InlineKeyboardButton("Зарегистрироваться", callback_data="register")
+        btn_register = types.InlineKeyboardButton("✅ Зарегистрироваться", callback_data="register")
         markup.add(btn_register)
         
         bot.send_message(message.chat.id, response, parse_mode='HTML', reply_markup=markup)
@@ -213,26 +228,22 @@ def process_child_age(message, user_data):
         
         user_data["age"] = age
         
-        # Создаем ребенка через API
         bot.send_message(message.chat.id, "⏳ Создаю аккаунт для ребенка...")
         
-        # Для создания ребенка нужен токен аутентификации
-        # В реальном приложении нужно сохранять токен при регистрации
-        # Для демо просто покажем сообщение
+        # ВРЕМЕННО: показываем сообщение, что функция в разработке
         response = f"""
-<b>✅ АККАУНТ РЕБЕНКА СОЗДАН</b>
+<b>⚠️ ФУНКЦИЯ В РАЗРАБОТКЕ</b>
 
-<b>Имя:</b> {user_data['child_name']}
-<b>Возраст:</b> {user_data['age']}
+Создание ребенка через бота временно недоступно.
 
-Аккаунт ребенка будет создан автоматически при первом входе в приложение.
-
-<b>Как добавить ребенка в приложении:</b>
-1. Войдите в приложение "Пингви"
+<b>Как добавить ребенка:</b>
+1. Войдите в мобильное приложение "Пингви"
 2. Перейдите в раздел "Моя семья"
 3. Нажмите "Добавить ребенка"
 4. Введите имя и возраст ребенка
-5. Данные для входа ребенка придут в этот чат
+5. Данные для входа придут в этот чат
+
+Извините за неудобства! 🙏
         """
         
         bot.send_message(message.chat.id, response, parse_mode='HTML')
@@ -269,6 +280,8 @@ def callback_register(call):
     
     bot.answer_callback_query(call.id, "Регистрирую...")
     
+    print(f"🔐 Регистрация пользователя: {user.id} - {user.first_name}")
+    
     result = register_user(user.id, user.first_name)
     
     if result.get("success"):
@@ -281,17 +294,17 @@ def callback_register(call):
 <b>Ваши данные для входа в приложение:</b>
 
 <b>Логин:</b>
-<pre><code>{login}</code></pre>
+<code>{login}</code>
 
 <b>Пароль:</b>
-<pre><code>{password}</code></pre>
+<code>{password}</code>
 
 <b>Инструкция:</b>
 1. Скачайте приложение "Пингви"
 2. Введите логин и пароль
 3. Начните пользоваться приложением
 
-⚠️ <b>Сохраните эти данные!</b> Они понадобятся для входа.
+⚠️ <b>Сохраните эти данные!</b>
         """
         
         markup = types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
@@ -304,17 +317,23 @@ def callback_register(call):
         
         # Отдельное сообщение для легкого копирования
         copy_text = f"""
-Для легкого копирования:
+📋 ДАННЫЕ ДЛЯ КОПИРОВАНИЯ:
 
 ЛОГИН: {login}
 ПАРОЛЬ: {password}
 
-(Нажмите и удерживайте текст, чтобы скопировать)
+(Нажмите и удерживайте текст)
         """
         bot.send_message(call.message.chat.id, copy_text)
         
     else:
-        bot.send_message(call.message.chat.id, "❌ Ошибка регистрации. Попробуйте позже.")
+        error_message = result.get("message", "Неизвестная ошибка")
+        print(f"❌ Ошибка регистрации: {error_message}")
+        
+        bot.send_message(
+            call.message.chat.id, 
+            f"❌ Ошибка регистрации: {error_message}\n\nПопробуйте позже или проверьте, запущен ли бэкенд."
+        )
 
 @bot.message_handler(commands=['help'])
 def handle_help(message):
@@ -338,13 +357,16 @@ def handle_help(message):
 3. Скачайте приложение "Пингви"
 4. Войдите в приложение
 5. Добавляйте детей и создавайте задачи
-6. Данные для детей будут приходить в этот чат
 
 <b>Поддержка:</b>
 Если возникли проблемы, напишите нам.
     """
     
     bot.send_message(message.chat.id, response, parse_mode='HTML')
+
+@bot.message_handler(func=lambda message: message.text == "🆘 Помощь")
+def handle_help_button(message):
+    handle_help(message)
 
 @bot.message_handler(func=lambda message: True)
 def handle_all_messages(message):
@@ -372,23 +394,40 @@ if __name__ == "__main__":
     print("=" * 60)
     print("🤖 TELEGRAM БОТ ДЛЯ ПИНГВИ СЕМЬЯ")
     print("=" * 60)
-    print(f"Токен бота: {TOKEN[:10]}...")
-    print(f"API URL: {API_URL}")
+    print(f"🔑 Токен бота: {TOKEN[:10]}...")
+    print(f"🌐 API URL: {API_URL}")
+    print("-" * 60)
+    
+    # Проверяем доступность бэкенда
+    try:
+        print("🔄 Проверка доступности бэкенда...")
+        test_response = requests.get(f"{API_URL}/api/health", timeout=5)
+        if test_response.status_code == 200:
+            print("✅ Бэкенд доступен!")
+        else:
+            print(f"⚠️ Бэкенд ответил с кодом {test_response.status_code}")
+    except Exception as e:
+        print(f"❌ Бэкенд НЕ доступен: {e}")
+        print(f"   Убедитесь, что бэкенд запущен на {API_URL}")
+        print(f"   Запустите бэкенд: python main.py")
+        print("-" * 60)
     
     try:
         bot_info = bot.get_me()
-        print(f"Бот: {bot_info.first_name} (@{bot_info.username})")
-        print(f"Ссылка: https://t.me/{bot_info.username}")
+        print(f"🤖 Бот: {bot_info.first_name} (@{bot_info.username})")
+        print(f"🔗 Ссылка: https://t.me/{bot_info.username}")
     except Exception as e:
-        print(f"Ошибка подключения: {e}")
+        print(f"❌ Ошибка подключения к Telegram: {e}")
+        print(f"   Проверьте токен бота")
         exit(1)
     
-    print("\nОсновные функции:")
-    print("• Регистрация пользователей")
-    print("• Выдача данных для входа")
-    print("• Управление детьми")
-    print("• Получение данных детей")
-    print("\nЗапуск бота...")
+    print("\n📋 Основные функции:")
+    print("  ✅ Регистрация пользователей")
+    print("  ✅ Выдача данных для входа")
+    print("  ✅ Просмотр детей")
+    print("  ⚠️  Добавление ребенка (временно через приложение)")
+    print("\n" + "=" * 60)
+    print("🚀 Бот запущен и готов к работе!")
     print("=" * 60)
     
     bot.polling(none_stop=True)

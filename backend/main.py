@@ -32,19 +32,21 @@ async def lifespan(app: FastAPI):
     print(f"✅ Очищено {cleaned} истекших сессий")
     
     # Запускаем Cloudflare Tunnel
-    public_url = None
-    if settings.CLOUDFLARE_TUNNEL_ENABLED and cloudflare_tunnel:
-        try:
-            print("🌐 Инициализация Cloudflare Tunnel...")
-            cloudflare_tunnel.port = settings.CLOUDFLARE_TUNNEL_PORT
-            public_url = cloudflare_tunnel.start()
+    #public_url = None
+    ##try:
+            #print("🌐 Инициализация Cloudflare Tunnel...")
+            #cloudflare_tunnel.port = settings.CLOUDFLARE_TUNNEL_PORT
+            #public_url = cloudflare_tunnel.start()
             
-            if public_url:
-                print(f"✅ Cloudflare Tunnel запущен!")
-                print(f"🔗 Публичный URL: {public_url}")
-        except Exception as e:
-            print(f"⚠️ Ошибка запуска Cloudflare Tunnel: {e}")
-    
+            #if public_url:
+                ##print(f"🔗 Публичный URL: {public_url}")
+        #except Exception as e:
+           # print(f"⚠️ Ошибка запуска Cloudflare Tunnel: {e}")
+        
+    print(f"\n📡 Сервер запущен на порту {settings.API_PORT}")
+    print(f"🌐 Доступен по адресам:")
+    print(f"   • http://localhost:{settings.API_PORT}")
+    print(f"   • http://127.0.0.1:{settings.API_PORT}")
     print(f"\n📡 Сервер запущен на порту {settings.API_PORT}")
     print("=" * 60)
     
@@ -52,8 +54,8 @@ async def lifespan(app: FastAPI):
     
     # Shutdown
     print("🛑 Остановка API...")
-    if cloudflare_tunnel:
-        cloudflare_tunnel.stop()
+    #if cloudflare_tunnel:
+        #cloudflare_tunnel.stop()
     db.close()
 
 # ========== App initialization ==========

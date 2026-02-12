@@ -11,22 +11,20 @@ import {
   Switch,
   ScrollView,
   Alert,
-  Platform,
   SafeAreaView,
   Modal,
   ActivityIndicator
 } from "react-native";
 import { useRouter } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
-import DateTimePicker from '@react-native-community/datetimepicker';
 import { useTasks } from "../hooks/tasksSafe";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
+
+const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
 import coinIcon from "../assets/coin.png";
 import childIcon from "../assets/person.png";
 
-// Тип для ребенка
 interface Child {
   id: number;
   name: string;
@@ -57,13 +55,13 @@ export default function CreateTaskScreen(): JSX.Element {
   const [isLoadingChildren, setIsLoadingChildren] = useState(true);
   const [showStartPicker, setShowStartPicker] = useState(false);
   const [showEndPicker, setShowEndPicker] = useState(false);
+  const [apiUrl, setApiUrl] = useState('');
 
-  // Загружаем детей при монтировании компонента
   useEffect(() => {
+    loadApiUrl();
     loadChildren();
   }, []);
 
-  // При изменении типа задачи, сбрасываем выбранного ребенка
   useEffect(() => {
     if (taskType === "self") {
       setSelectedChild(null);
@@ -72,22 +70,32 @@ export default function CreateTaskScreen(): JSX.Element {
     }
   }, [taskType, children]);
 
+  const loadApiUrl = async () => {
+    const url = await AsyncStorage.getItem('api_url');
+    if (url) {
+      setApiUrl(url);
+      console.log("📡 API URL загружен:", url);
+    } else {
+      setApiUrl('http://192.168.0.30:8081');
+    }
+  };
+
   const loadChildren = async () => {
     try {
       setIsLoadingChildren(true);
       const token = await AsyncStorage.getItem('auth_token');
+      const baseUrl = await AsyncStorage.getItem('api_url') || 'http://192.168.0.30:8081';
       
       if (!token) {
-        console.log("Нет токена авторизации");
+        console.log("❌ Нет токена авторизации");
         setChildren([]);
         setIsLoadingChildren(false);
         return;
       }
 
-      console.log("Загружаем детей...");
+      console.log("👶 Загружаем детей...");
       
-      // ПРАВИЛЬНЫЙ endpoint: /api/users/children
-      const response = await fetch('http://192.168.0.30:8000/api/users/children', {
+      const response = await fetch(`${baseUrl}/api/users/children`, {
         method: 'GET',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -95,14 +103,13 @@ export default function CreateTaskScreen(): JSX.Element {
         },
       });
 
-      console.log("Ответ от сервера:", response.status);
+      console.log("📥 Статус ответа детей:", response.status);
 
       if (response.ok) {
         const data = await response.json();
-        console.log("Получены дети:", data);
+        console.log("✅ Получены дети:", data);
         
         if (data.success && data.children) {
-          // Преобразуем данные детей
           const formattedChildren: Child[] = data.children.map((child: any) => ({
             id: child.id,
             name: child.child_name || child.first_name,
@@ -121,148 +128,100 @@ export default function CreateTaskScreen(): JSX.Element {
           if (formattedChildren.length > 0) {
             setSelectedChild(formattedChildren[0]);
           }
-        } else {
-          console.log("Нет данных о детях:", data.message);
-          setChildren([]);
         }
       } else if (response.status === 401) {
-        console.log("Токен невалиден");
-        setChildren([]);
-      } else {
-        console.log("Ошибка сервера:", response.status);
-        setChildren([]);
+        console.log("❌ Токен невалиден");
       }
     } catch (error) {
-      console.error("Ошибка загрузки детей:", error);
-      setChildren([]);
+      console.error("❌ Ошибка загрузки детей:", error);
     } finally {
       setIsLoadingChildren(false);
     }
   };
 
-const handleCreateTask = async () => {
-  console.log("=== Начало создания задачи ===");
-  console.log("Тип задачи:", taskType);
-  console.log("Выбранный ребенок:", selectedChild);
-  console.log("ID ребенка:", selectedChild?.id);
-  console.log("Название:", title);
-  console.log("Описание:", description);
-
-  // Валидация
-  if (!title.trim() || !description.trim()) {
-    Alert.alert("Ошибка", "Пожалуйста, заполните название и описание задачи");
-    return;
-  }
-
-  // Проверка для задач типа "child"
-  if (taskType === "child") {
-    if (!selectedChild) {
-      Alert.alert("Ошибка", "Пожалуйста, выберите ребенка");
+  const handleCreateTask = async () => {
+    console.log("=== Начало создания задачи ===");
+    
+    if (!title.trim() || !description.trim()) {
+      Alert.alert("Ошибка", "Заполните название и описание задачи");
       return;
     }
-    
-    if (!selectedChild.id) {
-      Alert.alert("Ошибка", "У выбранного ребенка нет ID");
+
+    if (taskType === "child" && !selectedChild?.id) {
+      Alert.alert("Ошибка", "Выберите ребенка");
       return;
     }
-  }
 
-  try {
-    setIsLoading(true);
-    
-    const token = await AsyncStorage.getItem('auth_token');
-    
-    if (!token) {
-      throw new Error("Требуется авторизация. Войдите в приложение.");
-    }
-
-    // Форматируем даты
-    const formatDateForAPI = (date: Date) => {
-      return date.toISOString().split('T')[0]; // YYYY-MM-DD
-    };
-
-    // Подготавливаем данные
-    const taskData: any = {
-      title: title.trim(),
-      description: description.trim(),
-      type: taskType === "child" ? "child" : "personal",
-      coins: parseInt(coins) || 0,
-      start_date: formatDateForAPI(startDate),
-      end_date: formatDateForAPI(endDate),
-      is_repeating: isRepeating,
-    };
-
-    // Добавляем child_id только для задач типа "child"
-    if (taskType === "child" && selectedChild && selectedChild.id) {
-      taskData.child_id = selectedChild.id;
-      console.log("Добавлен child_id:", taskData.child_id);
-    }
-
-    console.log("Отправляемые данные задачи:", JSON.stringify(taskData, null, 2));
-
-    // Отправляем запрос
-    const response = await fetch('http://192.168.0.30:8000/api/tasks', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(taskData),
-    });
-
-    const responseText = await response.text();
-    console.log("Статус ответа:", response.status);
-    console.log("Текст ответа:", responseText);
-
-    if (response.ok) {
-      const result = JSON.parse(responseText);
-      console.log("Задача успешно создана:", result);
+    try {
+      setIsLoading(true);
       
-      // Добавляем в локальное хранилище
-      await addTask({
+      const token = await AsyncStorage.getItem('auth_token');
+      const baseUrl = await AsyncStorage.getItem('api_url') || 'http://192.168.0.30:8081';
+      
+      if (!token) {
+        throw new Error("Требуется авторизация");
+      }
+
+      const formatDateForAPI = (date: Date) => {
+        return date.toISOString().split('T')[0];
+      };
+
+      // ВАЖНО: тип задачи для бэкенда - 'personal' (не 'self')
+      const taskData: any = {
         title: title.trim(),
         description: description.trim(),
-        startDate: startDate.toISOString(),
-        endDate: endDate.toISOString(),
+        type: taskType === "child" ? "child" : "personal",
         coins: parseInt(coins) || 0,
-        isRepeating,
-        type: taskType,
-        childName: taskType === "child" && selectedChild ? selectedChild.name : undefined,
-        childId: taskType === "child" && selectedChild ? selectedChild.id : undefined,
+        start_date: formatDateForAPI(startDate),
+        end_date: formatDateForAPI(endDate),
+        is_repeating: isRepeating,
+      };
+
+      if (taskType === "child" && selectedChild?.id) {
+        taskData.child_id = selectedChild.id;
+        console.log("👶 Child ID:", selectedChild.id);
+      }
+
+      console.log("📤 Отправка данных:", JSON.stringify(taskData, null, 2));
+      console.log("📡 URL:", `${baseUrl}/api/tasks`);
+
+      const response = await fetch(`${baseUrl}/api/tasks`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(taskData),
       });
 
-      Alert.alert(
-        "✅ Успешно!",
-        "Задача успешно создана",
-        [
-          {
-            text: "OK",
-            onPress: () => router.back()
-          }
-        ]
-      );
-    } else {
-      let errorMessage = "Не удалось создать задачу";
-      try {
-        const errorData = JSON.parse(responseText);
-        errorMessage = errorData.detail || errorData.message || errorMessage;
-        console.log("Детали ошибки:", errorData);
-      } catch (e) {
-        console.log("Не удалось распарсить ошибку:", responseText);
+      const responseText = await response.text();
+      console.log("📥 Статус:", response.status);
+      console.log("📥 Ответ:", responseText);
+
+      if (response.ok) {
+        const result = JSON.parse(responseText);
+        console.log("✅ Задача создана:", result);
+        
+        Alert.alert(
+          "✅ Успешно!",
+          "Задача создана",
+          [{ text: "OK", onPress: () => router.back() }]
+        );
+      } else {
+        let errorMessage = "Ошибка создания задачи";
+        try {
+          const errorData = JSON.parse(responseText);
+          errorMessage = errorData.detail || errorData.message || errorMessage;
+        } catch (e) {}
+        throw new Error(errorMessage);
       }
-      throw new Error(errorMessage);
+    } catch (error: any) {
+      console.error("❌ Ошибка:", error);
+      Alert.alert("❌ Ошибка", error.message);
+    } finally {
+      setIsLoading(false);
     }
-  } catch (error: any) {
-    console.error("Полная ошибка создания задачи:", error);
-    Alert.alert(
-      "❌ Ошибка",
-      error.message || "Не удалось создать задачу. Проверьте подключение к интернету."
-    );
-  } finally {
-    setIsLoading(false);
-    console.log("=== Конец создания задачи ===");
-  }
-};
+  };
 
   const formatDate = (date: Date) => {
     return date.toLocaleDateString('ru-RU', {
@@ -444,11 +403,6 @@ const handleCreateTask = async () => {
                   <Text style={styles.selectedChildName}>
                     Выбран: {getChildDisplayName(selectedChild)}
                   </Text>
-                  {selectedChild.login && (
-                    <Text style={styles.selectedChildLogin}>
-                      Логин: {selectedChild.login}
-                    </Text>
-                  )}
                 </View>
               )}
             </View>
@@ -462,7 +416,7 @@ const handleCreateTask = async () => {
               У вас пока нет добавленных детей
             </Text>
             <Text style={styles.noChildrenSubText}>
-              Добавьте ребенка через приложение Telegram
+              Добавьте ребенка через Telegram бота
             </Text>
             <TouchableOpacity
               style={styles.addChildButton}
@@ -481,7 +435,6 @@ const handleCreateTask = async () => {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
 
-      {/* Верхняя панель с кнопкой назад и заголовком */}
       <View style={styles.header}>
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
           <Ionicons name="chevron-back" size={24} color="#373635" />
@@ -495,7 +448,6 @@ const handleCreateTask = async () => {
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.scrollContent}
       >
-        {/* Сегментированный контрол */}
         <View style={styles.segmentedWrapper}>
           <View style={styles.segmentedControl}>
             <TouchableOpacity
@@ -530,12 +482,9 @@ const handleCreateTask = async () => {
           </View>
         </View>
 
-        {/* Выбор ребенка ТОЛЬКО для задач для ребенка */}
         {taskType === "child" && renderChildSelection()}
 
-        {/* Форма создания задачи */}
         <View style={styles.formContainer}>
-          {/* Название задачи */}
           <View style={styles.inputGroup}>
             <Text style={styles.inputLabel}>Название</Text>
             <View style={styles.inputWrapper}>
@@ -550,7 +499,6 @@ const handleCreateTask = async () => {
             </View>
           </View>
 
-          {/* Описание задачи */}
           <View style={styles.inputGroup}>
             <Text style={styles.inputLabel}>Описание</Text>
             <View style={[styles.inputWrapper, styles.textAreaWrapper]}>
@@ -570,7 +518,6 @@ const handleCreateTask = async () => {
             </View>
           </View>
 
-          {/* Даты начала и окончания */}
           <View style={styles.dateRow}>
             <View style={styles.dateInputGroup}>
               <Text style={styles.inputLabel}>Старт задачи</Text>
@@ -597,7 +544,6 @@ const handleCreateTask = async () => {
             </View>
           </View>
 
-          {/* Количество монет */}
           <View style={styles.inputGroup}>
             <Text style={styles.inputLabel}>Сколько монет начислить</Text>
             <View style={styles.coinInputWrapper}>
@@ -618,7 +564,6 @@ const handleCreateTask = async () => {
             </View>
           </View>
 
-          {/* Переключатель повторения */}
           <View style={styles.repeatContainer}>
             <Switch
               value={isRepeating}
@@ -632,7 +577,6 @@ const handleCreateTask = async () => {
         </View>
       </ScrollView>
 
-      {/* Кастомные DatePicker модалки */}
       <SimpleDatePicker
         visible={showStartPicker}
         date={startDate}
@@ -649,7 +593,6 @@ const handleCreateTask = async () => {
         type="end"
       />
 
-      {/* Кнопка создания задачи */}
       <View style={styles.buttonContainer}>
         <TouchableOpacity
           style={[
@@ -739,7 +682,10 @@ const styles = StyleSheet.create({
     color: "#FFFFFF",
     fontWeight: "600",
   },
-  // Новые стили для выбора ребенка
+  childrenContainer: {
+    alignItems: "center",
+    padding: 20,
+  },
   childSelectionContainer: {
     marginBottom: 30,
     paddingHorizontal: 20,
@@ -814,10 +760,6 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#8D41C1",
     marginBottom: 4,
-  },
-  selectedChildLogin: {
-    fontSize: 12,
-    color: "#666666",
   },
   noChildrenContainer: {
     alignItems: "center",
@@ -986,7 +928,6 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     color: "#FFFFFF",
   },
-  // Стили для модального окна выбора даты
   modalOverlay: {
     flex: 1,
     justifyContent: "center",

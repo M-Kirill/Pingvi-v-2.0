@@ -1,7 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Platform } from 'react-native';
 
-// Типы для ответов API
+// ========== TYPES ==========
 export interface ApiResponse<T = any> {
   success: boolean;
   message?: string;
@@ -67,7 +66,7 @@ export interface Profile {
   children_count: number;
 }
 
-// Ключи для AsyncStorage
+// ========== STORAGE KEYS ==========
 const STORAGE_KEYS = {
   AUTH_TOKEN: 'auth_token',
   AUTH_USER: 'auth_user',
@@ -75,16 +74,16 @@ const STORAGE_KEYS = {
   PROFILE: 'user_profile',
 } as const;
 
+// ========== API SERVICE ==========
 class ApiService {
-  private baseUrl: string = 'http://localhost:8080';
-  private readonly DEFAULT_PORT = 8080;
+  private baseUrl: string = 'http://192.168.0.30:8081';
+  private readonly DEFAULT_PORT = 8081;
 
   constructor() {
     this.loadSavedUrl();
   }
 
-  // ========== URL Management ==========
-
+  // ========== URL MANAGEMENT ==========
   private async loadSavedUrl() {
     try {
       const savedUrl = await AsyncStorage.getItem(STORAGE_KEYS.API_URL);
@@ -92,8 +91,7 @@ class ApiService {
         this.baseUrl = savedUrl;
         console.log('📡 Загружен сохраненный URL:', this.baseUrl);
       } else {
-        // Автоматически определяем URL при первом запуске
-        this.discoverApiUrl();
+        await this.setBaseUrl('http://192.168.0.30:8080');
       }
     } catch (error) {
       console.error('❌ Ошибка загрузки URL:', error);
@@ -101,28 +99,19 @@ class ApiService {
   }
 
   async discoverApiUrl(): Promise<string> {
-    // Список URL для проверки
     const urlsToTry = [
-      // Cloudflare URL (если доступен)
-      ...(await this.getCloudflareUrl() ? [await this.getCloudflareUrl()] : []),
-      
-      // Локальные адреса
-      'https://michael-unpatched-aleah.ngrok-free.dev',
+      'http://192.168.0.30:8080',
       'http://localhost:8080',
       'http://127.0.0.1:8080',
-      'http://10.0.2.2:8080', // Android эмулятор
-      'http://192.168.0.30:8080', // Ваш текущий IP
-      
-      // Сетевые адреса (будут добавлены динамически)
-      ...(await this.getLocalNetworkIps()),
-    ].filter(Boolean) as string[];
+      'http://10.0.2.2:8080',
+    ];
 
     console.log('🔍 Проверяем доступные API URL:', urlsToTry);
 
     for (const url of urlsToTry) {
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 3000);
+        const timeoutId = setTimeout(() => controller.abort(), 2000);
 
         const response = await fetch(`${url}/api/health`, {
           signal: controller.signal,
@@ -144,42 +133,8 @@ class ApiService {
       }
     }
 
-    // Если ничего не нашли, используем localhost
-    console.log('⚠️ Не удалось найти API, используем localhost');
-    return this.baseUrl;
-  }
-
-  private async getCloudflareUrl(): Promise<string | null> {
-    try {
-      // Сначала пробуем получить конфигурацию с локального сервера
-      const response = await fetch('http://localhost:8080/api/mobile-config', {
-        timeout: 2000,
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        return data.CLOUDFLARE_URL || null;
-      }
-    } catch (error) {
-      // Пробуем другие локальные адреса
-      try {
-        const response = await fetch('http://127.0.0.1:8080/api/mobile-config', {
-          timeout: 2000,
-        });
-        
-        if (response.ok) {
-          const data = await response.json();
-          return data.CLOUDFLARE_URL || null;
-        }
-      } catch {}
-    }
-    return null;
-  }
-
-  private async getLocalNetworkIps(): Promise<string[]> {
-    // В реальном приложении здесь можно использовать react-native-network-info
-    // Но пока возвращаем пустой массив - URL будут добавляться вручную
-    return [];
+    console.log('⚠️ Не удалось найти API, используем 192.168.0.30:8081');
+    return 'http://192.168.0.30:8081';
   }
 
   async setBaseUrl(url: string) {
@@ -192,8 +147,7 @@ class ApiService {
     return this.baseUrl;
   }
 
-  // ========== HTTP Methods ==========
-
+  // ========== HTTP METHODS ==========
   private async request<T = any>(
     endpoint: string,
     options: RequestInit = {},
@@ -206,7 +160,6 @@ class ApiService {
       ...options.headers,
     };
 
-    // Добавляем токен авторизации
     if (!skipAuth) {
       const token = await AsyncStorage.getItem(STORAGE_KEYS.AUTH_TOKEN);
       if (token) {
@@ -217,7 +170,6 @@ class ApiService {
     const config: RequestInit = {
       ...options,
       headers,
-      timeout: 15000, // 15 секунд
     };
 
     try {
@@ -225,9 +177,8 @@ class ApiService {
       
       const response = await fetch(url, config);
       
-      // Пробуем получить JSON ответ
-      const contentType = response.headers.get('content-type');
       let data: any;
+      const contentType = response.headers.get('content-type');
       
       if (contentType?.includes('application/json')) {
         data = await response.json();
@@ -241,24 +192,19 @@ class ApiService {
       }
 
       if (!response.ok) {
-        // Обрабатываем ошибки авторизации
         if (response.status === 401) {
           await this.clearAuth();
           throw new Error(data.detail?.message || data.message || 'Требуется авторизация');
         }
-        
         throw new Error(data.detail?.message || data.message || `Ошибка ${response.status}`);
       }
 
       return data;
     } catch (error: any) {
       console.error(`❌ Ошибка запроса ${endpoint}:`, error.message);
-      
-      // Специальная обработка для ошибок сети
       if (error.message.includes('Network') || error.message.includes('Failed to fetch')) {
-        throw new Error('Не удалось подключиться к серверу. Проверьте настройки подключения.');
+        throw new Error('Не удалось подключиться к серверу. Проверьте, запущен ли бэкенд на порту 8081');
       }
-      
       throw error;
     }
   }
@@ -289,17 +235,11 @@ class ApiService {
     return this.request<T>(endpoint, { method: 'DELETE' });
   }
 
-  // ========== Auth Methods ==========
-
+  // ========== AUTH METHODS ==========
   async setAuth(token: string, user: User) {
-    try {
-      await AsyncStorage.setItem(STORAGE_KEYS.AUTH_TOKEN, token);
-      await AsyncStorage.setItem(STORAGE_KEYS.AUTH_USER, JSON.stringify(user));
-      console.log('🔐 Токен сохранен');
-    } catch (error) {
-      console.error('❌ Ошибка сохранения токена:', error);
-      throw error;
-    }
+    await AsyncStorage.setItem(STORAGE_KEYS.AUTH_TOKEN, token);
+    await AsyncStorage.setItem(STORAGE_KEYS.AUTH_USER, JSON.stringify(user));
+    console.log('🔐 Токен сохранен');
   }
 
   async getAuthToken(): Promise<string | null> {
@@ -316,16 +256,12 @@ class ApiService {
   }
 
   async clearAuth() {
-    try {
-      await AsyncStorage.multiRemove([
-        STORAGE_KEYS.AUTH_TOKEN,
-        STORAGE_KEYS.AUTH_USER,
-        STORAGE_KEYS.PROFILE,
-      ]);
-      console.log('🧹 Данные авторизации очищены');
-    } catch (error) {
-      console.error('❌ Ошибка очистки данных:', error);
-    }
+    await AsyncStorage.multiRemove([
+      STORAGE_KEYS.AUTH_TOKEN,
+      STORAGE_KEYS.AUTH_USER,
+      STORAGE_KEYS.PROFILE,
+    ]);
+    console.log('🧹 Данные авторизации очищены');
   }
 
   async isAuthenticated(): Promise<boolean> {
@@ -334,14 +270,9 @@ class ApiService {
     return !!(token && user);
   }
 
-  // ========== Profile Methods ==========
-
+  // ========== PROFILE METHODS ==========
   async saveProfile(profile: Profile) {
-    try {
-      await AsyncStorage.setItem(STORAGE_KEYS.PROFILE, JSON.stringify(profile));
-    } catch (error) {
-      console.error('❌ Ошибка сохранения профиля:', error);
-    }
+    await AsyncStorage.setItem(STORAGE_KEYS.PROFILE, JSON.stringify(profile));
   }
 
   async getSavedProfile(): Promise<Profile | null> {
@@ -354,5 +285,4 @@ class ApiService {
   }
 }
 
-// Создаем и экспортируем единственный экземпляр
 export const api = new ApiService();

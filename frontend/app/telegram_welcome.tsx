@@ -70,28 +70,32 @@ export default function TelegramWelcomeScreen() {
 
   const handleTelegramLogin = () => {
     const botUrl = "https://t.me/pengui_family_bot";
+  
+    // Пытаемся открыть Telegram
     Linking.openURL(botUrl).catch(() => {
-      Alert.alert(
-        "Откройте Telegram бота", 
-        `1. Перейдите по ссылке: ${botUrl}\n2. Нажмите START\n3. Скопируйте логин и пароль\n4. Вернитесь в приложение`,
-        [
-          {
-            text: "Я получил данные",
-            onPress: () => router.push("/login")
-          },
-          {
-            text: "Отмена",
-            style: "cancel"
-          }
-        ]
-      );
+    // Игнорируем ошибку, Telegram может не открыться
     });
+  
+    // ВСЕГДА показываем инструкцию
+    Alert.alert(
+      "📲 Регистрация в Telegram",
+      "1. Нажмите START в боте @pengui_family_bot\n2. Скопируйте логин и пароль\n3. Вернитесь в приложение",
+      [
+        {
+          text: "✅ У меня есть данные",
+          onPress: () => router.push("/login")
+        },
+        {
+          text: "❌ Отмена",
+          style: "cancel"
+        }
+      ]
+    );
   };
-
   const handleInviteLogin = () => {
     router.push("/login_for_child");
   };
-
+  
   const handleTestMode = () => {
     Alert.alert(
       "Режим разработчика",
@@ -210,7 +214,7 @@ export default function TelegramWelcomeScreen() {
         <View style={styles.buttonsContainer}>
           <TouchableOpacity
             style={styles.buttonWrapper}
-            onPress={() => router.push("/login")}
+            onPress={handleTelegramLogin}
             activeOpacity={0.8}
             
           >

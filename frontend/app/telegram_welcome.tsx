@@ -24,7 +24,6 @@ export default function TelegramWelcomeScreen() {
   const [loading, setLoading] = useState(true);
   const [checkingAuth, setCheckingAuth] = useState(false);
 
-  // При загрузке экрана проверяем, авторизован ли пользователь
   useEffect(() => {
     checkExistingAuth();
   }, []);
@@ -33,7 +32,6 @@ export default function TelegramWelcomeScreen() {
     try {
       console.log("🔍 Проверка существующей авторизации...");
       
-      // Проверяем наличие токена
       const token = await AsyncStorage.getItem('auth_token');
       const userData = await AsyncStorage.getItem('auth_user');
       
@@ -42,7 +40,6 @@ export default function TelegramWelcomeScreen() {
         setCheckingAuth(true);
         
         try {
-          // Пытаемся проверить токен на сервере
           const isValid = await authService.validateToken();
           
           if (isValid) {
@@ -54,8 +51,7 @@ export default function TelegramWelcomeScreen() {
             await authService.logout();
           }
         } catch (error) {
-          console.log("⚠️ Ошибка проверки токена, используем локальные данные:", error);
-          // Если не удалось проверить, но есть данные - все равно переходим
+          console.log("⚠️ Ошибка проверки токена:", error);
           const user = JSON.parse(userData);
           if (user && user.login) {
             console.log("Используем локальные данные пользователя");
@@ -63,8 +59,6 @@ export default function TelegramWelcomeScreen() {
             return;
           }
         }
-      } else {
-        console.log("Токен не найден, показываем экран приветствия");
       }
     } catch (error) {
       console.error("Ошибка при проверке авторизации:", error);
@@ -75,34 +69,29 @@ export default function TelegramWelcomeScreen() {
   };
 
   const handleTelegramLogin = () => {
-    // Открываем Telegram бота
     const botUrl = "https://t.me/pengui_family_bot";
     Linking.openURL(botUrl).catch(() => {
-      Alert.alert("Ошибка", "Не удалось открыть Telegram");
+      Alert.alert(
+        "Откройте Telegram бота", 
+        `1. Перейдите по ссылке: ${botUrl}\n2. Нажмите START\n3. Скопируйте логин и пароль\n4. Вернитесь в приложение`,
+        [
+          {
+            text: "Я получил данные",
+            onPress: () => router.push("/login")
+          },
+          {
+            text: "Отмена",
+            style: "cancel"
+          }
+        ]
+      );
     });
-
-    // Показываем инструкцию и переходим на экран логина
-    Alert.alert(
-      "Откройте Telegram бота",
-      "1. В Telegram нажмите START\n2. Скопируйте логин и пароль\n3. Вернитесь в приложение",
-      [
-        {
-          text: "Я получил данные",
-          onPress: () => router.push("/login")
-        },
-        {
-          text: "Отмена",
-          style: "cancel"
-        }
-      ]
-    );
   };
 
-  const handleInviteLogin = async () => {
+  const handleInviteLogin = () => {
     router.push("/login_for_child");
   };
 
-  // Скрытая функция для разработки (удерживать кнопку 3 секунды)
   const handleTestMode = () => {
     Alert.alert(
       "Режим разработчика",
@@ -122,7 +111,6 @@ export default function TelegramWelcomeScreen() {
                     if (login) {
                       setLoading(true);
                       try {
-                        // Используем стандартный пароль для теста
                         const result = await authService.login(
                           login.trim(), 
                           "test123", 
@@ -182,7 +170,6 @@ export default function TelegramWelcomeScreen() {
     );
   };
 
-  // Показываем индикатор загрузки при проверке авторизации
   if (loading || checkingAuth) {
     return (
       <View style={styles.loadingContainer}>
@@ -196,7 +183,6 @@ export default function TelegramWelcomeScreen() {
 
   return (
     <View style={styles.container}>
-      {/* Скрытая кнопка для режима разработчика (в правом верхнем углу) */}
       <TouchableOpacity 
         style={styles.devButton}
         onLongPress={handleTestMode}
@@ -224,15 +210,15 @@ export default function TelegramWelcomeScreen() {
         <View style={styles.buttonsContainer}>
           <TouchableOpacity
             style={styles.buttonWrapper}
-            onPress={handleTelegramLogin}
+            onPress={() => router.push("/login")}
             activeOpacity={0.8}
-            disabled={loading}
+            
           >
             <LinearGradient
               colors={['#6D0FAD', '#B667C4']}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
-              style={[styles.gradientButton, loading && styles.buttonDisabled]}
+              style={styles.gradientButton}
             >
               <Text style={styles.buttonText}>Войти через Telegram</Text>
             </LinearGradient>
@@ -242,13 +228,12 @@ export default function TelegramWelcomeScreen() {
             style={styles.buttonWrapper}
             onPress={handleInviteLogin}
             activeOpacity={0.8}
-            disabled={loading}
           >
             <LinearGradient
               colors={['#6D0FAD', '#B667C4']}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 0 }}
-              style={[styles.gradientButton, loading && styles.buttonDisabled]}
+              style={styles.gradientButton}
             >
               <Text style={styles.buttonText}>Войти по приглашению</Text>
             </LinearGradient>
@@ -258,7 +243,6 @@ export default function TelegramWelcomeScreen() {
             <Text style={styles.agreementText}>
               Нажимая на кнопку войти, вы соглашаетесь с условиями и офертой
             </Text>
-           
           </View>
         </View>
       </View>
@@ -362,9 +346,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 20,
   },
-  buttonDisabled: {
-    opacity: 0.7,
-  },
   buttonText: {
     fontSize: 14,
     fontWeight: '400',
@@ -382,15 +363,5 @@ const styles = StyleSheet.create({
     color: '#6B7280',
     textAlign: 'center',
     lineHeight: 16,
-  },
-  helpLink: {
-    padding: 8,
-    marginTop: 10,
-  },
-  helpLinkText: {
-    fontSize: 12,
-    fontWeight: '500',
-    color: '#6D0FAD',
-    textDecorationLine: 'underline',
   },
 });

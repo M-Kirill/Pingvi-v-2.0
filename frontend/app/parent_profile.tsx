@@ -665,7 +665,7 @@ export default function ParentProfile() {
 
         <TouchableOpacity
           style={styles.navButton}
-          onPress={() => router.push("/telegram_welcome_for_child")}
+          onPress={() => router.push("/statistic_screen")}
         >
           <Image source={statIcon} style={styles.navIcon} />
         </TouchableOpacity>

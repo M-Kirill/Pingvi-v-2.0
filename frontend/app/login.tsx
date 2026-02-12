@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   View,
   TextInput,
@@ -24,7 +24,25 @@ export default function Login() {
   const [login, setLogin] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [discoveringUrl, setDiscoveringUrl] = useState(false);
   const router = useRouter();
+
+  // При загрузке экрана пытаемся обнаружить API
+  useEffect(() => {
+    autoDiscoverApi();
+  }, []);
+
+  const autoDiscoverApi = async () => {
+    try {
+      setDiscoveringUrl(true);
+      const url = await authService.discoverApiUrl();
+      console.log('📡 API URL обнаружен:', url);
+    } catch (error) {
+      console.log('⚠️ Не удалось обнаружить API');
+    } finally {
+      setDiscoveringUrl(false);
+    }
+  };
 
   const handleContinue = async () => {
     if (!login.trim() || !password.trim()) {
@@ -35,70 +53,40 @@ export default function Login() {
     setLoading(true);
 
     try {
-      console.log("🔐 Пытаюсь авторизоваться...");
+      console.log("🔐 Попытка авторизации...");
       
-      // Вызываем авторизацию через сервис
       const authResult = await authService.login(
         login.trim(),
         password.trim(),
         'Mobile App'
       );
 
-      console.log("📨 Результат авторизации:", {
-        success: authResult.success,
-        message: authResult.message,
-        hasToken: !!authResult.token,
-        hasUser: !!authResult.user
-      });
-
       if (authResult.success && authResult.token && authResult.user) {
         console.log("✅ Авторизация успешна");
         
-        // Загружаем полный профиль пользователя
-        console.log("📊 Загружаю профиль...");
-        const profile = await profileService.getProfile();
+        // Загружаем полный профиль
+        const profile = await profileService.getProfile(true);
         
         if (profile) {
-          console.log("✅ Профиль загружен:", {
-            userId: profile.user.id,
-            name: profile.user.first_name,
-            childrenCount: profile.children.length
-          });
+          console.log("✅ Профиль загружен");
           
-          // Сохраняем профиль в локальное хранилище через сервис
-          await profileService.syncLocalData(profile);
-          
-          // Определяем куда перенаправить пользователя
+          // Определяем маршрут перенаправления
           let redirectPath = '/tasks';
           
           if (authResult.user.role === 'child') {
-            console.log("👶 Пользователь - ребенок, перенаправляю в детский профиль");
-            redirectPath = '/child_profile';
-          } else if (profile.children.length === 0) {
-            console.log("👨‍👩‍👦 У родителя нет детей, показываем welcome");
+            redirectPath = '/tasks_for_child';
+          } else if (profile.children_count === 0) {
             redirectPath = '/welcome_screen';
           }
           
-          console.log(`📍 Перенаправляю на: ${redirectPath}`);
+          console.log(`📍 Перенаправление на: ${redirectPath}`);
           router.replace(redirectPath);
-          
         } else {
-          console.log("⚠️ Профиль не загружен, использую базовые данные");
-          
-          // Если профиль не загрузился, создаем базовые данные
-          await profileService.syncLocalData({
-            user: authResult.user,
-            children: [],
-            tasks_count: 0,
-            total_coins: authResult.user.coins || 0
-          });
-          
-          // Перенаправляем в зависимости от роли
+          // Если профиль не загрузился, используем базовые данные
           const redirectPath = authResult.user.role === 'child' 
-            ? '/child_profile' 
+            ? '/tasks_for_child' 
             : '/welcome_screen';
           
-          console.log(`📍 Перенаправляю на: ${redirectPath}`);
           router.replace(redirectPath);
         }
       } else {
@@ -106,53 +94,21 @@ export default function Login() {
         
         Alert.alert(
           'Ошибка', 
-          authResult.message || 'Неверный логин или пароль. Проверьте данные из Telegram бота.'
+          authResult.message || 'Неверный логин или пароль'
         );
-        setPassword(''); // Очищаем пароль при ошибке
-        
-        // Если проблема с подключением, предлагаем проверить настройки
-        if (authResult.message?.includes('сеть') || 
-            authResult.message?.includes('подключиться') ||
-            authResult.message?.includes('timeout')) {
-          
-          Alert.alert(
-            'Проблема с подключением',
-            'Хотите проверить настройки подключения?',
-            [
-              {
-                text: 'Проверить',
-                onPress: () => router.push('/check_connect')
-              },
-              {
-                text: 'Повторить',
-                style: 'cancel',
-                onPress: () => setLoading(false)
-              }
-            ]
-          );
-        }
+        setPassword('');
       }
 
     } catch (error: any) {
       console.error('❌ Ошибка авторизации:', error);
       
-      // Анализируем тип ошибки
       let errorMessage = 'Произошла ошибка при авторизации';
       let showConnectionHelp = false;
       
-      if (error.message?.includes('Network Error') || 
-          error.message?.includes('Failed to fetch') ||
-          error.message?.includes('timeout')) {
-        errorMessage = 'Не удалось подключиться к серверу. Проверьте:\n\n' +
-                      '1. Подключение к интернету\n' +
-                      '2. Что сервер запущен\n' +
-                      '3. Настройки подключения в приложении';
+      if (error.message?.includes('подключиться') || 
+          error.message?.includes('Network')) {
+        errorMessage = 'Не удалось подключиться к серверу. Проверьте настройки.';
         showConnectionHelp = true;
-      } else if (error.message?.includes('JSON')) {
-        errorMessage = 'Сервер вернул неверный ответ. Возможно, бэкенд не запущен.';
-        showConnectionHelp = true;
-      } else if (error.message) {
-        errorMessage = error.message;
       }
       
       if (showConnectionHelp) {
@@ -161,54 +117,35 @@ export default function Login() {
           errorMessage,
           [
             {
-              text: 'Настройки подключения',
+              text: 'Настройки',
               onPress: () => router.push('/check_connect')
             },
             {
               text: 'Повторить',
-              style: 'cancel',
               onPress: () => setLoading(false)
             }
           ]
         );
       } else {
-        Alert.alert('Ошибка', errorMessage, [
-          { text: 'OK', onPress: () => setLoading(false) }
-        ]);
+        Alert.alert('Ошибка', errorMessage);
+        setLoading(false);
       }
-    } finally {
-      setLoading(false);
     }
   };
 
   const handleTestConnection = async () => {
     try {
       setLoading(true);
-      const currentUrl = api.getCurrentUrl();
+      const currentUrl = authService.getCurrentApiUrl();
       
       Alert.alert(
         'Проверка подключения',
-        `Текущий URL: ${currentUrl || 'Не настроен'}\n\nПроверяю соединение...`
+        `Текущий URL: ${currentUrl}\n\nПроверяю соединение...`
       );
       
-      if (!currentUrl) {
-        Alert.alert(
-          'URL не настроен',
-          'Настройте подключение в настройках',
-          [
-            { text: 'Настройки', onPress: () => router.push('/check_connect') },
-            { text: 'OK', style: 'cancel' }
-          ]
-        );
-        return;
-      }
+      const connected = await authService.testConnection();
       
-      const response = await fetch(`${currentUrl}/api/health`, {
-        method: 'GET',
-        timeout: 5000
-      });
-      
-      if (response.ok) {
+      if (connected) {
         Alert.alert(
           '✅ Соединение установлено',
           `API сервер доступен:\n${currentUrl}`
@@ -220,18 +157,27 @@ export default function Login() {
         );
       }
     } catch (error) {
-      console.error('❌ Ошибка проверки соединения:', error);
       Alert.alert('❌ Ошибка', 'Не удалось проверить соединение');
     } finally {
       setLoading(false);
     }
   };
 
+  if (discoveringUrl) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#8D41C1" />
+          <Text style={styles.loadingText}>Поиск сервера...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="dark-content" />
 
-      {/* Кнопка назад */}
       <TouchableOpacity
         style={styles.backButton}
         onPress={() => router.back()}
@@ -243,7 +189,7 @@ export default function Login() {
         />
       </TouchableOpacity>
 
-      {/* Скрытая кнопка проверки соединения (удерживать) */}
+      {/* Кнопка проверки соединения */}
       <TouchableOpacity
         style={styles.testButton}
         onLongPress={handleTestConnection}
@@ -252,12 +198,9 @@ export default function Login() {
         <Text style={styles.testButtonText}>🔗</Text>
       </TouchableOpacity>
 
-      {/* Основной контент */}
       <View style={styles.content}>
-        {/* Логотип */}
         <Text style={styles.logo}>Пингви</Text>
 
-        {/* Заголовок */}
         <View style={styles.titleContainer}>
           <Text style={styles.title}>Добро пожаловать!</Text>
           <Text style={styles.description}>
@@ -265,7 +208,6 @@ export default function Login() {
           </Text>
         </View>
 
-        {/* Форма */}
         <View style={styles.form}>
           <View style={styles.inputContainer}>
             <TextInput
@@ -297,8 +239,6 @@ export default function Login() {
             />
           </View>
 
-        
-
           <TouchableOpacity
             style={[
               styles.continueButton,
@@ -322,7 +262,6 @@ export default function Login() {
               </Text>
             )}
           </TouchableOpacity>
-
         </View>
       </View>
     </SafeAreaView>
@@ -333,6 +272,16 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#FFFFFF',
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 20,
+    fontSize: 16,
+    color: '#8D41C1',
   },
   backButton: {
     position: 'absolute',
@@ -417,22 +366,6 @@ const styles = StyleSheet.create({
     padding: 0,
     width: '100%',
   },
-  infoBox: {
-    width: SCREEN_WIDTH - 22.5*2,
-    backgroundColor: '#F8F9FA',
-    padding: 12,
-    borderRadius: 10,
-    marginTop: 5,
-    marginBottom: 15,
-    borderLeftWidth: 3,
-    borderLeftColor: '#6D0FAD',
-  },
-  infoText: {
-    fontSize: 12,
-    color: '#666',
-    lineHeight: 16,
-    marginBottom: 2,
-  },
   continueButton: {
     width: SCREEN_WIDTH - 22.5*2,
     height: 45,
@@ -456,15 +389,5 @@ const styles = StyleSheet.create({
   },
   continueButtonTextInactive: {
     color: '#BDBDBD',
-  },
-  settingsLink: {
-    marginTop: 15,
-    padding: 10,
-  },
-  settingsLinkText: {
-    fontSize: 14,
-    color: '#8D41C1',
-    textDecorationLine: 'underline',
-    textAlign: 'center',
   },
 });

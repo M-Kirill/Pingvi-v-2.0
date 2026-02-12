@@ -87,6 +87,7 @@ export default function WelcomeScreen() {
           <TouchableOpacity
             style={styles.primaryButton}
             onPress={() => router.push("/telegram_welcome_for_child")}
+            onPress={() => router.push("/login_for_child")}
           >
             <Text style={styles.primaryButtonText}>Добавить ребенка</Text>
           </TouchableOpacity>

@@ -1,162 +1,154 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { api } from './api';
-import { authService } from './auth';
+import { api, User, Child, Profile, ApiResponse } from './api';
 
-export interface UserProfile {
-  id: number;
-  telegram_id: number;
-  first_name: string;
-  login: string;
-  coins: number;
-  photo_url?: string;
-  created_at: string;
-  last_login?: string;
-  role: string;
-}
-
-export interface FamilyMember {
-  id: number;
-  name: string;
-  child_name?: string;
-  age?: number;
-  coins: number;
-  avatar_url?: string;
-  created_at: string;
-}
-
-export interface ProfileData {
-  user: UserProfile;
-  children: FamilyMember[];
-  tasks_count: number;
-  total_coins: number;
+export interface UpdateProfileData {
+  first_name?: string;
+  photo_url?: string | null;
 }
 
 class ProfileService {
-  async getProfile(): Promise<ProfileData | null> {
+  
+  /**
+   * Получение полного профиля пользователя
+   */
+  async getProfile(forceRefresh: boolean = false): Promise<Profile | null> {
     try {
-      const response = await api.get<{success: boolean; profile: ProfileData}>('/api/profile');
+      // Сначала пробуем получить из кэша
+      if (!forceRefresh) {
+        const cached = await api.getSavedProfile();
+        if (cached) {
+          console.log('📦 Используем кэшированный профиль');
+          return cached;
+        }
+      }
+
+      console.log('📡 Загружаем профиль с сервера...');
+      const response = await api.get<{ success: boolean; profile: Profile }>('/api/users/profile');
       
       if (response.success && response.profile) {
-        await this.syncLocalData(response.profile);
+        await api.saveProfile(response.profile);
         return response.profile;
       }
-    } catch (error) {
-      console.error('Ошибка получения профиля:', error);
-    }
-
-    return null;
-  }
-
-  async getFamily(): Promise<FamilyMember[]> {
-    try {
-      const response = await api.get<{success: boolean; family: FamilyMember[]}>('/api/family');
       
-      if (response.success && response.family) {
-        return response.family;
-      }
-    } catch (error) {
-      console.error('Ошибка получения семьи:', error);
-    }
-
-    return [];
-  }
-
-  async getChildren(): Promise<FamilyMember[]> {
-    try {
-      const response = await api.get<{success: boolean; children: FamilyMember[]}>('/api/users/children');
-      
-      if (response.success && response.children) {
-        return response.children;
-      }
-    } catch (error) {
-      console.error('Ошибка получения детей:', error);
-    }
-
-    return [];
-  }
-
-  async createChild(name: string, age?: number): Promise<{success: boolean; message: string; child_id?: number}> {
-    try {
-      const response = await api.post<{
-        success: boolean;
-        message: string;
-        child_name: string;
-        child_id?: number;
-      }>('/api/children/create', { name, age });
-      
-      return {
-        success: response.success,
-        message: response.message,
-        child_id: response.child_id
-      };
+      return null;
     } catch (error: any) {
-      console.error('Ошибка создания ребенка:', error);
-      return {
-        success: false,
-        message: error.message || 'Ошибка сети'
-      };
+      console.error('❌ ProfileService.getProfile error:', error);
+      
+      // При ошибке пробуем вернуть кэшированные данные
+      const cached = await api.getSavedProfile();
+      if (cached) {
+        console.log('⚠️ Используем кэшированный профиль из-за ошибки');
+        return cached;
+      }
+      
+      throw error;
     }
   }
 
-  async updateProfile(data: {first_name?: string; photo_url?: string}): Promise<boolean> {
+  /**
+   * Обновление профиля
+   */
+  async updateProfile(data: UpdateProfileData): Promise<boolean> {
     try {
-      const response = await api.patch<{success: boolean; message: string}>('/api/profile', data);
-      return response.success;
+      const response = await api.patch<ApiResponse>('/api/users/profile', data);
+      
+      if (response.success) {
+        // Обновляем кэш
+        await this.getProfile(true);
+        return true;
+      }
+      
+      return false;
     } catch (error) {
-      console.error('Ошибка обновления профиля:', error);
+      console.error('❌ ProfileService.updateProfile error:', error);
       return false;
     }
   }
 
-  async syncLocalData(profile: ProfileData): Promise<void> {
+  /**
+   * Получение списка детей
+   */
+  async getChildren(): Promise<Child[]> {
     try {
-      // Сохраняем профиль в AsyncStorage для оффлайн работы
-      await AsyncStorage.setItem('current_user', JSON.stringify({
-        id: profile.user.id,
-        login: profile.user.login,
-        name: profile.user.first_name,
-        coins: profile.user.coins,
-        photoUrl: profile.user.photo_url,
-        familyMembers: profile.children,
-        telegramAuth: !!profile.user.telegram_id,
-        createdAt: profile.user.created_at,
-        hasProfilePhoto: !!profile.user.photo_url,
-        profileCompleted: true,
-        preferences: {
-          notifications: true,
-          theme: 'light'
-        }
-      }));
-
-      await AsyncStorage.setItem('user_type', profile.user.role);
-      await AsyncStorage.setItem('is_authenticated', 'true');
-      
-      // Сохраняем детей отдельно
-      await AsyncStorage.setItem('user_children', JSON.stringify(profile.children));
+      const response = await api.get<{ success: boolean; children: Child[] }>('/api/users/children');
+      return response.success ? response.children : [];
     } catch (error) {
-      console.error('Ошибка синхронизации данных:', error);
+      console.error('❌ ProfileService.getChildren error:', error);
+      return [];
     }
   }
 
-  async getCachedProfile(): Promise<any> {
+  /**
+   * Получение членов семьи
+   */
+  async getFamily(): Promise<any[]> {
     try {
-      const userJson = await AsyncStorage.getItem('current_user');
-      if (userJson) {
-        return JSON.parse(userJson);
+      const response = await api.get<{ success: boolean; family: any[] }>('/api/family');
+      return response.success ? response.family : [];
+    } catch (error) {
+      console.error('❌ ProfileService.getFamily error:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Создание ребенка
+   */
+  async createChild(name: string, age?: number): Promise<{ success: boolean; child_id?: number; message?: string }> {
+    try {
+      const response = await api.post<{
+        success: boolean;
+        message: string;
+        child_id?: number;
+        child_name: string;
+      }>('/api/children/create', { name, age });
+
+      if (response.success) {
+        // Обновляем профиль, чтобы получить нового ребенка
+        await this.getProfile(true);
       }
-    } catch (error) {
-      console.error('Ошибка получения кэшированного профиля:', error);
+
+      return {
+        success: response.success,
+        child_id: response.child_id,
+        message: response.message,
+      };
+    } catch (error: any) {
+      console.error('❌ ProfileService.createChild error:', error);
+      return {
+        success: false,
+        message: error.message || 'Ошибка создания ребенка',
+      };
     }
-    return null;
   }
 
-  async clearCache(): Promise<void> {
+  /**
+   * Синхронизация локальных данных с сервером
+   */
+  async syncLocalData(profile: Profile): Promise<void> {
+    await api.saveProfile(profile);
+  }
+
+  /**
+   * Получение статистики
+   */
+  async getStatistics(): Promise<any> {
     try {
-      await AsyncStorage.removeItem('current_user');
-      await AsyncStorage.removeItem('user_children');
-      await AsyncStorage.removeItem('user_type');
+      const profile = await this.getProfile();
+      if (!profile) return null;
+
+      return {
+        total_coins: profile.total_coins,
+        family_coins: profile.family_coins,
+        tasks_count: profile.tasks_count,
+        completed_tasks: profile.completed_tasks,
+        children_count: profile.children_count,
+        completion_rate: profile.tasks_count > 0 
+          ? Math.round((profile.completed_tasks / profile.tasks_count) * 100) 
+          : 0,
+      };
     } catch (error) {
-      console.error('Ошибка очистки кэша:', error);
+      console.error('❌ ProfileService.getStatistics error:', error);
+      return null;
     }
   }
 }
